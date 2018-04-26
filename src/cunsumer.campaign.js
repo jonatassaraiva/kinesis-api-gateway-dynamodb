@@ -3,7 +3,6 @@
 const CampaignModel = require('./model.campaign');
 const getCampaign = require('./get.campaign');
 
-
 const updatePushOpen = (id, body) => {
   return CampaignModel.update(id, { $ADD: { totalPushOpen: body.totalPushOpen }, lastUpdate: body.totalPushOpen })
     .then(result => {

@@ -3,7 +3,6 @@
 const getCampaign = require('./get.campaign');
 const cunsumerCampaign = require('./cunsumer.campaign');
 
-
 module.exports.getCampaign = (event, context, callback) => {
   const id = event.pathParameters.campaignId;
   getCampaign(id)
