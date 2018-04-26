@@ -1,0 +1,170 @@
+service: kinesis-api-gateway-dynamodb
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: us-east-1
+  stage: v1
+  deploymentBucket: ${env:DEPLOYMENT_BUCKET}
+  iamRoleStatements:
+  - Effect: Allow
+    Action:
+      - dynamodb:*
+    Resource: "*"
+
+functions:
+  getCampaign:
+    name: getCampaign-${self:provider.stage}
+    handler: src/handler.getCampaign
+    description: Push Open
+    memorySize: 128
+    timeout: 30
+    events:
+      - http:
+          method: GET
+          path: /campaign/{campaignId}
+          cors: true
+
+  pushOpen-kinesis-consumer:
+    name: pushOpen-kinesis-consumer-${self:provider.stage}
+    handler: src/handler.cunsumerCampaign
+    description: Push Open - Kinesis Consumer
+    memorySize: 256
+    timeout: 300
+    events:
+      - stream:
+          type: kinesis
+          arn: { Fn::GetAtt: [ KinesisStream, Arn ] }
+          batchSize: 100
+          startingPosition: TRIM_HORIZON
+
+custom:
+  kinesisName: pushOpen-stream-${self:provider.stage}
+
+resources:
+  Resources:
+    ApiGatewayRestApi:
+      Type: AWS::ApiGateway::RestApi
+      Properties:
+        Name: ${self:service}-${self:provider.stage}
+
+    KinesisStream:
+      Type: AWS::Kinesis::Stream
+      Properties:
+        Name: ${self:custom.kinesisName}
+        ShardCount: 2
+
+    HTTPResource:
+      Type: AWS::ApiGateway::Resource
+      Properties:
+        RestApiId: { Ref: ApiGatewayRestApi }
+        ParentId: { Fn::GetAtt: [ ApiGatewayRestApi, RootResourceId ] }
+        PathPart: push-open
+
+    HTTPDeployment:
+      Type: AWS::ApiGateway::Deployment
+      DependsOn: [HTTPMethodPOST, HTTPMethodOptions ]
+      Properties:
+        RestApiId: { Ref: ApiGatewayRestApi }
+        StageName: ${self:provider.stage}
+
+    HTTPMethodPOST:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        AuthorizationType: NONE
+        HttpMethod: POST
+        Integration:
+          Type: AWS
+          IntegrationHttpMethod: POST
+          Credentials: { Fn::GetAtt: [ IAMRole, Arn ] }
+          Uri: { Fn::Join: [ ':', [ arn:aws:apigateway, { Ref: AWS::Region }, kinesis:action/PutRecord ] ] }
+          RequestTemplates:
+            application/json: "{\"StreamName\": \"${self:custom.kinesisName}\", \"PartitionKey\": \"$input.path('$.campaignId')\",\"Data\": \"$util.base64Encode($input.json('$'))\"}"
+          PassthroughBehavior: WHEN_NO_MATCH
+          IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        ResourceId: { Ref: HTTPResource }
+        RestApiId: { Ref: ApiGatewayRestApi }
+        MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+    HTTPMethodOptions:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        AuthorizationType: NONE
+        HttpMethod: OPTIONS
+        Integration:
+          Type: MOCK
+          IntegrationResponses:
+            - ResponseParameters:
+                method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+                method.response.header.Access-Control-Allow-Origin: "'*'"
+              ResponseTemplates:
+                application/json: ''
+              StatusCode: 200
+          PassthroughBehavior: NEVER
+          RequestTemplates:
+            application/json: '{"statusCode": 200}'
+        ResourceId: { Ref: HTTPResource }
+        RestApiId: { Ref: ApiGatewayRestApi }
+        MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          StatusCode: 200
+
+    IAMRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: { Service: [ apigateway.amazonaws.com ] }
+              Action: [ sts:AssumeRole ]
+        Path: /
+        Policies:
+          - PolicyName: root
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: kinesis:PutRecord
+                  Resource: { Fn::GetAtt: [ KinesisStream, Arn ] }
+
+    DevicesDynamoDbTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: campaign-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: campaignId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: campaignId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+
+package:
+  exclude:
+    - .env
+    - .scripts/**
+    - .vscode/**
+    - .debug/**
+    - src/tests/**
+    - coverage/**
+    - src/workers/**
+    - .env*

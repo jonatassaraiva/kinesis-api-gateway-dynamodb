@@ -1,0 +1,18 @@
+{
+  "name": "kinesis-api-gateway-dynamodb",
+  "version": "1.0.0",
+  "description": "",
+  "main": "teste.js",
+  "dependencies": {
+    "dynamoose": "^0.8.7",
+    "uuid": "^3.2.1"
+  },
+  "devDependencies": {
+    "dotenv": "^5.0.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
