@@ -1,10 +1,11 @@
 'use strict';
 
-const getCampaign = require('./get.campaign');
-const cunsumerCampaign = require('./cunsumer.campaign');
+const getCampaign = require('./core/get.campaign');
+const cunsumerCampaign = require('./core/cunsumer.campaign');
 
 module.exports.getCampaign = (event, context, callback) => {
   const id = event.pathParameters.campaignId;
+
   getCampaign(id)
     .then(result => {
       callback(null, {
