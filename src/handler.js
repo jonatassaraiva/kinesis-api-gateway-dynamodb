@@ -8,7 +8,7 @@ module.exports.getCampaign = (event, context, callback) => {
 
   getCampaign(id)
     .then(result => {
-      callback(null, {
+       (null, {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(result)
